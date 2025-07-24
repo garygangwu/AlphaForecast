@@ -108,6 +108,7 @@ def process_stock_normalization(input_file, output_dir, scalers, feature_columns
 
     print(f"  Data shape: {df.shape}")
     print(f"  Features normalized: {len(feature_columns)}")
+    print(f"  Latest date processed: {df['Date'].iloc[-1]}")
     print(f"  Saved to: {output_file}")
 
     return df

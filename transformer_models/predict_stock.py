@@ -22,8 +22,8 @@ CLASS_COLORS = {
     'big_down': 'red',
     'down': 'orange',
     'no_change': 'gray',
-    'up': 'green',
-    'big_up': 'blue'
+    'up': 'blue',
+    'big_up': 'green'
 }
 
 penalty_matrix = np.array([
@@ -48,9 +48,6 @@ def custom_f1(y_true, y_pred, penalty_matrix):
     score = 1 - (total_penalty / max_total_penalty)
 
     return score
-
-# Print device info
-print_device_info()
 
 def load_global_thresholds(cache_file='./global_thresholds.pkl'):
     """
@@ -694,10 +691,35 @@ def predict_stock(symbol, model_path="best_model.pth", plot_historical=True):
         'historical_predictions': historical_predictions
     }
 
-def print_predictions(predictions):
+def print_predictions(predictions, concise=False):
     """
     Print multi-task predictions in a formatted way.
+
+    Args:
+        predictions (dict): Prediction results
+        concise (bool): If True, print only 2 lines of concise output
     """
+    if concise:
+        # Concise output format
+        symbol = predictions['symbol'].upper()
+        reg_7d = predictions['regression_7d_prediction']
+        reg_30d = predictions['regression_30d_prediction']
+        class_7d = predictions['classification_7d_prediction'].upper()
+        class_30d = predictions['classification_30d_prediction'].upper()
+        conf_7d = predictions['classification_7d_confidence']
+        conf_30d = predictions['classification_30d_confidence']
+        price_7d = predictions['predicted_price_7d']
+        price_30d = predictions['predicted_price_30d']
+
+        # Determine icons based on regression direction
+        icon_7d = "📈" if reg_7d > 0 else "📉"
+        icon_30d = "📈" if reg_30d > 0 else "📉"
+
+        print(f"{symbol} {icon_7d} 7-day predicted price:  {reg_7d*100:+.2f}% ${price_7d:.2f} | {icon_7d} Classification: {class_7d} (confidence: {conf_7d:.3f})")
+        print(f"{symbol} {icon_30d} 30-day predicted price: {reg_30d*100:+.2f}% ${price_30d:.2f} | {icon_30d} Classification: {class_30d} (confidence: {conf_30d:.3f})")
+        return
+
+    # Full detailed output (original format)
     print("\n" + "="*70)
     print(f"MULTI-TASK STOCK PREDICTION RESULTS FOR {predictions['symbol'].upper()}")
     print("="*70)
@@ -781,15 +803,35 @@ def main():
                        help='Path to trained model file')
     parser.add_argument('--no-plots', action='store_true',
                        help='Skip generating historical validation plots')
+    parser.add_argument('--concise', action='store_true',
+                       help='Print only concise 2-line output')
 
     args = parser.parse_args()
 
     try:
         # Make prediction
-        predictions = predict_stock(args.symbol, args.model, plot_historical=not args.no_plots)
+        # If concise is True, force plot_historical to True (i.e., no_plots to False)
+        plot_historical = not args.no_plots
+        if args.concise:
+            plot_historical = False
+        if not args.concise:
+            # Print device info
+            print_device_info()
+        if args.concise:
+            # Suppress all prints in predict_stock by temporarily redirecting stdout
+            import sys
+            import io
+            _stdout = sys.stdout
+            sys.stdout = io.StringIO()
+            try:
+                predictions = predict_stock(args.symbol, args.model, plot_historical=plot_historical)
+            finally:
+                sys.stdout = _stdout
+        else:
+            predictions = predict_stock(args.symbol, args.model, plot_historical=plot_historical)
 
         # Print results
-        print_predictions(predictions)
+        print_predictions(predictions, concise=args.concise)
 
     except FileNotFoundError as e:
         print(f"Error: {e}")
