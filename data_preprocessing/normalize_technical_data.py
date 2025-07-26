@@ -146,7 +146,7 @@ def main():
     csv_files = list(input_dir.glob('*.csv'))
     if not csv_files:
         print(f"No CSV files found in {input_dir}")
-        print("Please run generate_technical_data.py first to create the technical indicator data.")
+        print("Please run generate_stock_technical_data.py first to create the technical indicator data.")
         return
 
     # Read the first file to get column names

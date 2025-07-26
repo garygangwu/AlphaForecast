@@ -51,7 +51,7 @@ fi
 echo ""
 echo "Step 4/4: Generating technical indicators..."
 echo "  Computing 20 technical indicators for $SYMBOL_UPPER..."
-python generate_technical_data.py --symbol $SYMBOL_UPPER
+python generate_stock_technical_data.py --symbol $SYMBOL_UPPER
 if [ $? -eq 0 ]; then
     echo "  ✓ Successfully generated technical indicators"
 else
