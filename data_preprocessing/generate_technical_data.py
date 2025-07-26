@@ -246,6 +246,199 @@ def compute_volume_ratio(df, period=20):
     volume_ratio = df['Volume'] / volume_ma
     return volume_ratio
 
+def compute_stochastic_oscillator(df, k_period=14, d_period=3):
+    """
+    Compute Stochastic Oscillator.
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLC data
+        k_period (int): Period for %K calculation
+        d_period (int): Period for %D calculation
+
+    Returns:
+        dict: Dictionary with %K and %D values
+    """
+    # Calculate %K
+    lowest_low = df['Low'].rolling(window=k_period).min()
+    highest_high = df['High'].rolling(window=k_period).max()
+    k_percent = 100 * ((df['Close'] - lowest_low) / (highest_high - lowest_low))
+
+    # Calculate %D (SMA of %K)
+    d_percent = k_percent.rolling(window=d_period).mean()
+
+    return {
+        'Stoch_K': k_percent,
+        'Stoch_D': d_percent
+    }
+
+def compute_cci(df, period=20):
+    """
+    Compute Commodity Channel Index (CCI).
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLC data
+        period (int): Period for CCI calculation
+
+    Returns:
+        pd.Series: CCI values
+    """
+    # Calculate Typical Price
+    typical_price = (df['High'] + df['Low'] + df['Close']) / 3
+
+    # Calculate Simple Moving Average of Typical Price
+    sma_tp = typical_price.rolling(window=period).mean()
+
+    # Calculate Mean Deviation
+    mean_deviation = typical_price.rolling(window=period).apply(
+        lambda x: np.mean(np.abs(x - x.mean())), raw=True
+    )
+
+    # Calculate CCI
+    cci = (typical_price - sma_tp) / (0.015 * mean_deviation)
+
+    return cci
+
+def compute_keltner_channels(df, period=20, multiplier=2):
+    """
+    Compute Keltner Channels with price-independent features.
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLC data
+        period (int): Period for EMA calculation
+        multiplier (float): Multiplier for ATR
+
+    Returns:
+        dict: Dictionary with Keltner Channel features
+    """
+    # Calculate EMA (middle line)
+    ema = df['Close'].ewm(span=period).mean()
+
+    # Calculate ATR
+    atr = compute_atr(df, period=period)
+
+    # Calculate upper and lower bands
+    kc_upper = ema + (multiplier * atr)
+    kc_lower = ema - (multiplier * atr)
+
+    # Price-independent position within Keltner Channels (0 to 1)
+    kc_position = (df['Close'] - kc_lower) / (kc_upper - kc_lower)
+
+    # Channel width as volatility indicator (normalized by middle line)
+    kc_width_pct = (kc_upper - kc_lower) / ema
+
+    return {
+        'KC_position': kc_position,
+        'KC_width_pct': kc_width_pct
+    }
+
+def compute_heikin_ashi(df):
+    """
+    Compute Heikin-Ashi candles with price-independent features.
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLC data
+
+    Returns:
+        dict: Dictionary with Heikin-Ashi features
+    """
+    # Calculate Heikin-Ashi OHLC
+    ha_close = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
+    ha_open = ((df['Open'] + df['Close']) / 2).shift(1)
+    ha_high = pd.concat([df['High'], ha_open, ha_close], axis=1).max(axis=1)
+    ha_low = pd.concat([df['Low'], ha_open, ha_close], axis=1).min(axis=1)
+
+    # Price-independent features
+    # Log returns for directional momentum
+    ha_close_log_return = np.log(ha_close / ha_close.shift(1))
+
+    # Close position within HA candle for intra-candle sentiment (0 to 1)
+    ha_close_position = (ha_close - ha_low) / (ha_high - ha_low)
+
+    # Relative volatility measure (range as percentage)
+    ha_range_pct = (ha_high - ha_low) / ha_close
+
+    return {
+        'HA_Close_log_return': ha_close_log_return,
+        'HA_Close_position': ha_close_position,
+        'HA_range_pct': ha_range_pct
+    }
+
+def compute_donchian_channels(df, period=20):
+    """
+    Compute Donchian Channels with price-independent features.
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLC data
+        period (int): Period for Donchian Channels calculation
+
+    Returns:
+        dict: Dictionary with Donchian Channel features
+    """
+    # Original Donchian bands
+    donchian_upper = df['High'].rolling(window=period).max()
+    donchian_lower = df['Low'].rolling(window=period).min()
+    donchian_middle = (donchian_upper + donchian_lower) / 2
+
+    # Price-independent indicators
+    # Position within Donchian Channels (0 to 1)
+    donchian_position = (df['Close'] - donchian_lower) / (donchian_upper - donchian_lower)
+
+    # Channel width as percentage of current price
+    donchian_width_pct = (donchian_upper - donchian_lower) / df['Close']
+
+    # Deviation from middle line as percentage
+    donchian_deviation = (df['Close'] - donchian_middle) / donchian_middle
+
+    return {
+        'Donchian_Position': donchian_position,
+        'Donchian_Width_Pct': donchian_width_pct,
+        'Donchian_Deviation': donchian_deviation
+    }
+
+def compute_candlestick_patterns(df):
+    """
+    Compute various candlestick patterns using TA-Lib with one-hot encoding.
+
+    Args:
+        df (pd.DataFrame): DataFrame with OHLC data
+
+    Returns:
+        dict: Dictionary with candlestick pattern indicators (one-hot encoded)
+    """
+    patterns = {}
+
+    # Define pattern functions
+    pattern_functions = {
+        'Doji': talib.CDLDOJI,
+        'Hammer': talib.CDLHAMMER,
+        'Engulfing': talib.CDLENGULFING,
+        'Shooting_Star': talib.CDLSHOOTINGSTAR,
+        'Hanging_Man': talib.CDLHANGINGMAN,
+        'Morning_Star': talib.CDLMORNINGSTAR,
+        'Evening_Star': talib.CDLEVENINGSTAR,
+        'Three_White_Soldiers': talib.CDL3WHITESOLDIERS,
+        'Three_Black_Crows': talib.CDL3BLACKCROWS,
+        'Dark_Cloud_Cover': talib.CDLDARKCLOUDCOVER,
+        'Piercing': talib.CDLPIERCING
+    }
+
+    # Compute patterns and convert to one-hot encoding
+    for pattern_name, pattern_func in pattern_functions.items():
+        # Get raw pattern values (100, -100, 0)
+        raw_pattern = pattern_func(df['Open'], df['High'], df['Low'], df['Close'])
+
+        # Convert to one-hot encoding
+        # 1 for bullish pattern (100), 0 for bearish (-100) or no pattern (0)
+        patterns[f'{pattern_name}_Bullish'] = (raw_pattern == 100).astype(int)
+
+        # 1 for bearish pattern (-100), 0 for bullish (100) or no pattern (0)
+        patterns[f'{pattern_name}_Bearish'] = (raw_pattern == -100).astype(int)
+
+        # 1 for no pattern (0), 0 for any pattern (100 or -100)
+        patterns[f'{pattern_name}_None'] = (raw_pattern == 0).astype(int)
+
+    return patterns
+
 def process_stock_data(input_file, output_dir):
     """
     Process a single stock file to generate return data with technical indicators.
@@ -322,6 +515,35 @@ def process_stock_data(input_file, output_dir):
     # 12. Volume Ratio (today's volume vs. 20-day average)
     df['Volume_ratio'] = compute_volume_ratio(df, period=20)
 
+    # 13. Stochastic Oscillator
+    stoch_dict = compute_stochastic_oscillator(df, k_period=14, d_period=3)
+    for stoch_name, stoch_values in stoch_dict.items():
+        df[stoch_name] = stoch_values
+
+    # 14. Commodity Channel Index (CCI) - 20 days
+    df['CCI_20d'] = compute_cci(df, period=20)
+
+    # 15. Keltner Channels
+    kc_dict = compute_keltner_channels(df, period=20, multiplier=2)
+    for kc_name, kc_values in kc_dict.items():
+        df[kc_name] = kc_values
+
+    # 16. Heikin-Ashi
+    ha_dict = compute_heikin_ashi(df)
+    for ha_name, ha_values in ha_dict.items():
+        df[ha_name] = ha_values
+
+    # 17. Donchian Channels
+    donchian_dict = compute_donchian_channels(df, period=20)
+    for donchian_name, donchian_values in donchian_dict.items():
+        df[donchian_name] = donchian_values
+
+    # 18. Candlestick Patterns
+    print(f"  Computing candlestick patterns...")
+    candlestick_dict = compute_candlestick_patterns(df)
+    for pattern_name, pattern_values in candlestick_dict.items():
+        df[pattern_name] = pattern_values
+
     # Select all columns for the dataset
     all_columns = [
         'Date',
@@ -342,6 +564,28 @@ def process_stock_data(input_file, output_dir):
         'Volume_vs_MA_5d', 'Volume_vs_MA_20d',
         'MFI_14d', 'ADL_zscore',
         'CMF_20d', 'Volume_ratio',
+        # Stochastic Oscillator
+        'Stoch_K', 'Stoch_D',
+        # Commodity Channel Index
+        'CCI_20d',
+        # Keltner Channels
+        'KC_position', 'KC_width_pct',
+        # Heikin-Ashi
+        'HA_Close_log_return', 'HA_Close_position', 'HA_range_pct',
+        # Donchian Channels
+        'Donchian_Position', 'Donchian_Width_Pct', 'Donchian_Deviation',
+        # Candlestick Patterns (One-Hot Encoded)
+        'Doji_Bullish', 'Doji_Bearish', 'Doji_None',
+        'Hammer_Bullish', 'Hammer_Bearish', 'Hammer_None',
+        'Engulfing_Bullish', 'Engulfing_Bearish', 'Engulfing_None',
+        'Shooting_Star_Bullish', 'Shooting_Star_Bearish', 'Shooting_Star_None',
+        'Hanging_Man_Bullish', 'Hanging_Man_Bearish', 'Hanging_Man_None',
+        'Morning_Star_Bullish', 'Morning_Star_Bearish', 'Morning_Star_None',
+        'Evening_Star_Bullish', 'Evening_Star_Bearish', 'Evening_Star_None',
+        'Three_White_Soldiers_Bullish', 'Three_White_Soldiers_Bearish', 'Three_White_Soldiers_None',
+        'Three_Black_Crows_Bullish', 'Three_Black_Crows_Bearish', 'Three_Black_Crows_None',
+        'Dark_Cloud_Cover_Bullish', 'Dark_Cloud_Cover_Bearish', 'Dark_Cloud_Cover_None',
+        'Piercing_Bullish', 'Piercing_Bearish', 'Piercing_None',
         # Target variables
         'forward_return_7d', 'forward_return_30d'
     ]
@@ -355,8 +599,9 @@ def process_stock_data(input_file, output_dir):
     print(f"  Data shape: {df_features.shape}")
     print(f"  Features: {len(all_columns) - 1} (excluding Date)")
     print(f"  Total features: {len(all_columns) - 1}")
-    print(f"  Price-based features: 12 (4 log returns + 8 price-based indicators)")
-    print(f"  Volume-based features: 8 (OBV, VWAP, Volume_MA_5d, Volume_MA_20d, MFI_14d, ADL, CMF_20d, Volume_ratio)")
+    print(f"  Price-based features: 23 (4 log returns + 19 price-based indicators)")
+    print(f"  Volume-based features: 8 (OBV, VWAP, Volume MAs, MFI, ADL, CMF, Volume ratio)")
+    print(f"  Candlestick patterns: 33 (11 patterns × 3 states each: Bullish, Bearish, None)")
     print(f"  Target variables: 2 (forward_return_7d, forward_return_30d)")
     print(f"  Saved to: {output_file}")
 
@@ -424,9 +669,10 @@ def main():
 
     print(f"\nAll extended technical indicator data saved to: {output_dir}")
     print("Features included:")
-    print("  - Price-based: 4 log returns + 10 indicators (MA, RSI, MACD, Bollinger Bands, ATR)")
+    print("  - Price-based: 4 log returns + 21 indicators (MA, RSI, MACD, Bollinger Bands, ATR, Stochastic, CCI, Keltner, Heikin-Ashi, Donchian)")
     print("  - Volume-based: 8 indicators (OBV, VWAP, Volume MAs, MFI, ADL, CMF, Volume ratio)")
-    print("  - Total: 20 features + 2 target variables")
+    print("  - Candlestick patterns: 33 features (11 patterns × 3 states: Bullish, Bearish, None)")
+    print("  - Total: 64 features + 2 target variables")
 
 if __name__ == "__main__":
     main()

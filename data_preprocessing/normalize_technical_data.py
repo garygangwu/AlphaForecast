@@ -138,18 +138,41 @@ def main():
     output_dir = Path('../adjusted_return_ta_data_extended_normalized')
     output_dir.mkdir(exist_ok=True)
 
-    feature_columns = [
-        'Open_log_return', 'High_log_return', 'Low_log_return', 'Close_log_return',
-        'Close_vs_MA5_5d', 'Close_vs_MA5_20d',
-        'RSI_14d',
-        'MACD_line', 'MACD_signal', 'MACD_histogram',
-        'BB_position',
-        'ATR_relative_14d',
-        'OBV_zscore', 'VWAP_diff',
-        'Volume_vs_MA_5d', 'Volume_vs_MA_20d',
-        'MFI_14d', 'ADL_zscore',
-        'CMF_20d', 'Volume_ratio',
-    ]
+        # Dynamically determine feature columns from the first CSV file
+    # Exclude Date, target variables, and one-hot encoded fields from normalization
+    exclude_columns = ['Date', 'forward_return_7d', 'forward_return_30d']
+
+    # Get feature columns from the first available CSV file
+    csv_files = list(input_dir.glob('*.csv'))
+    if not csv_files:
+        print(f"No CSV files found in {input_dir}")
+        print("Please run generate_technical_data.py first to create the technical indicator data.")
+        return
+
+    # Read the first file to get column names
+    sample_df = pd.read_csv(csv_files[0])
+    all_columns = sample_df.columns.tolist()
+
+    # Filter out excluded columns and one-hot encoded candlestick patterns
+    feature_columns = []
+    one_hot_columns = []
+
+    for col in all_columns:
+        if col not in exclude_columns:
+            # Check if it's a one-hot encoded candlestick pattern (ends with _Bullish, _Bearish, or _None)
+            if col.endswith(('_Bullish', '_Bearish', '_None')):
+                one_hot_columns.append(col)
+            else:
+                feature_columns.append(col)
+
+    print(f"Detected {len(feature_columns)} feature columns to normalize:")
+    for col in feature_columns:
+        print(f"  - {col}")
+    print(f"\nDetected {len(one_hot_columns)} one-hot encoded columns (excluded from normalization):")
+    for col in one_hot_columns:
+        print(f"  - {col}")
+    print(f"\nExcluded columns: {exclude_columns}")
+    print(f"Total features: {len(feature_columns) + len(one_hot_columns)}")
 
     if args.symbol:
         # Single symbol mode: load global scalers and normalize only this file
@@ -162,19 +185,32 @@ def main():
         if not scaler_file.exists():
             print(f"Global scaler file not found: {scaler_file}")
             return
+
+        # Get feature columns from the target file
+        target_df = pd.read_csv(csv_file)
+        all_columns = target_df.columns.tolist()
+
+        # Filter out excluded columns and one-hot encoded candlestick patterns
+        feature_columns = []
+        one_hot_columns = []
+
+        for col in all_columns:
+            if col not in exclude_columns:
+                # Check if it's a one-hot encoded candlestick pattern
+                if col.endswith(('_Bullish', '_Bearish', '_None')):
+                    one_hot_columns.append(col)
+                else:
+                    feature_columns.append(col)
+
         print(f"Normalizing only {csv_file.name} using global scalers from {scaler_file}")
+        print(f"Detected {len(feature_columns)} feature columns to normalize")
+        print(f"Detected {len(one_hot_columns)} one-hot encoded columns (excluded from normalization)")
         scalers = load_global_scalers_from_file(scaler_file, feature_columns)
         process_stock_normalization(csv_file, output_dir, scalers, feature_columns)
         print(f"Done. Normalized file saved to {output_dir / csv_file.name}")
         return
 
     # Default: process all files as before
-    csv_files = list(input_dir.glob('*.csv'))
-    if not csv_files:
-        print(f"No CSV files found in {input_dir}")
-        print("Please run generate_technical_data.py first to create the technical indicator data.")
-        return
-
     print(f"Found {len(csv_files)} CSV files to normalize")
     print(f"Input directory: {input_dir}")
     print(f"Output directory: {output_dir}")
@@ -217,6 +253,8 @@ def main():
     print(f"Files processed: {len(processed_files)}")
     print(f"Total rows: {total_rows:,}")
     print(f"Features normalized: {len(feature_columns)}")
+    print(f"One-hot encoded features (excluded from normalization): {len(one_hot_columns)}")
+    print(f"Total features: {len(feature_columns) + len(one_hot_columns)}")
     if processed_files:
         sample_file = output_dir / processed_files[0]
         if sample_file.exists():
@@ -228,6 +266,8 @@ def main():
                 print(f"  - {col}")
     print(f"\nAll normalized data saved to: {output_dir}")
     print("Global scaler parameters saved to: global_scalers_combined.json")
+    print("\nNote: One-hot encoded candlestick patterns were excluded from normalization")
+    print("as they are already in the optimal 0-1 range for deep learning.")
 
 if __name__ == "__main__":
     main()

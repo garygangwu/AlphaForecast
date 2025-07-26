@@ -15,7 +15,7 @@ def fetch_and_save_ohlcv(symbol, key, save_path):
     print(f"[{symbol}] Saved to {save_path}")
 
 load_dotenv(override=True)
-API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 DATA_DIR = "../data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -32,7 +32,7 @@ def main():
     for ticker in ticker_list:
         filepath = os.path.join(DATA_DIR, f"{ticker}.csv")
         if not os.path.exists(filepath):  # skip if already downloaded
-            fetch_and_save_ohlcv(ticker, API_KEY, filepath)
+            fetch_and_save_ohlcv(ticker, ALPHA_VANTAGE_API_KEY, filepath)
             time.sleep(0.2)
         else:
             print(f"[{ticker}] Already exists, skipping.")
