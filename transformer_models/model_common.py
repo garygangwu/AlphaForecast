@@ -9,12 +9,25 @@ SEQ_LEN = 126 #200
 # Updated INPUT_DIM to include technical indicators (excluding Volume)
 # Columns: Open_log_return, High_log_return, Low_log_return, Close_log_return,
 # MA_5d, MA_20d, RSI_14d, MACD_line, MACD_signal, MACD_histogram, BB_upper, BB_middle, BB_lower, ATR_14d
-INPUT_DIM = 20  # 4 log returns + 16 technical indicators
+INPUT_DIM = 0  # 4 log returns + 16 technical indicators
 MODEL_DIM = 256
 NUM_LAYERS = 2
 NUM_HEADS = 4
 BATCH_SIZE = 32
 DROPOUT = 0.2
+
+
+def set_input_dim(input_dim):
+    global INPUT_DIM
+    INPUT_DIM = input_dim
+
+def set_model_feature_and_target_columns(filepath):
+    df = pd.read_csv(filepath)
+    target_column_names = ["forward_return_7d", "forward_return_30d"]
+    filter_column_names = ["Date", "Volume"]
+    feature_columns = [col for col in df.columns if col not in target_column_names and col not in filter_column_names]
+    set_input_dim(len(feature_columns))
+    return feature_columns, target_column_names
 
 # Classification parameters
 NUM_CLASSES = 5  # big_down, down, no_change, up, big_up
@@ -169,7 +182,10 @@ def consistency_loss(regression_pred, classification_pred, temperature=1.0):
     consistency = torch.mean((regression_direction - expected_direction) ** 2)
     return consistency
 
-def load_stock_data(filepath, data_dir='../adjusted_return_ta_data_extended'):
+def load_stock_data(filepath,
+                    data_dir='../adjusted_return_ta_data_extended',
+                    feature_columns=[],
+                    target_columns=[]):
     """
     Load stock return data with technical indicators from CSV file.
 
@@ -190,22 +206,6 @@ def load_stock_data(filepath, data_dir='../adjusted_return_ta_data_extended'):
     df = pd.read_csv(filepath)
     print(f"Loaded stock data with technical indicators: {filepath}")
     df.sort_values('Date', inplace=True)
-
-    # Select the required columns: log returns + technical indicators + forward returns
-    # Excluding Volume column as requested
-    feature_columns = [
-        'Open_log_return', 'High_log_return', 'Low_log_return', 'Close_log_return',
-        'Close_vs_MA5_5d', 'Close_vs_MA5_20d',
-        'RSI_14d',
-        'MACD_line', 'MACD_signal', 'MACD_histogram',
-        'BB_position',
-        'ATR_relative_14d',
-        'OBV_zscore', 'VWAP_diff',
-        'Volume_vs_MA_5d', 'Volume_vs_MA_20d',
-        'MFI_14d', 'ADL_zscore',
-        'CMF_20d', 'Volume_ratio',
-    ]
-    target_columns = ['forward_return_7d', 'forward_return_30d']
 
     # Combine features and targets
     all_columns = feature_columns + target_columns

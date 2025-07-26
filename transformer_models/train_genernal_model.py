@@ -15,6 +15,7 @@ from datetime import datetime
 # Import shared model components
 from model_common import (
     SEQ_LEN, BATCH_SIZE, NUM_CLASSES, CLASS_NAMES, device,
+    set_model_feature_and_target_columns,
     print_device_info, load_stock_data, create_model, save_model, load_trained_model,
     consistency_loss, interpret_predictions,
     classify_single_return, calculate_global_thresholds
@@ -123,7 +124,10 @@ def ensure_sequences_on_device(sequences):
 
     return device_sequences
 
-def load_all_sequences_corrected(use_cache=True, cache_file='global_thresholds.pkl'):
+def load_all_sequences_corrected(use_cache=True,
+                                 cache_file='global_thresholds.pkl',
+                                 feature_columns=None,
+                                 target_columns=None):
     """
     CORRECTED VERSION: Load all sequences using GLOBAL classification thresholds.
 
@@ -151,6 +155,11 @@ def load_all_sequences_corrected(use_cache=True, cache_file='global_thresholds.p
 
     csv_dir = Path(INPUT_DATA_DIR)
     csv_files = list(csv_dir.glob('*.csv'))
+
+    # hardcode the locations as the behavior of load_stock_data
+    forward_return_7d_column_index = len(feature_columns)
+    forward_return_30d_column_index = forward_return_7d_column_index + 1
+
     if global_thresholds_7d is None or global_thresholds_30d is None:
         # If cache loading failed, generate sequences from scratch with CORRECT classification
         print("Generating sequences from scratch with CORRECTED global classification...")
@@ -159,9 +168,9 @@ def load_all_sequences_corrected(use_cache=True, cache_file='global_thresholds.p
         all_returns_30d = []
 
         for filepath in csv_files:
-            stock_data = load_stock_data(filepath)
-            returns_7d = stock_data[SEQ_LEN:, 20]  # forward_return_7d
-            returns_30d = stock_data[SEQ_LEN:, 21]  # forward_return_30d
+            stock_data = load_stock_data(filepath, feature_columns=feature_columns, target_columns=target_columns)
+            returns_7d = stock_data[SEQ_LEN:, forward_return_7d_column_index]  # forward_return_7d
+            returns_30d = stock_data[SEQ_LEN:, forward_return_30d_column_index]  # forward_return_30d
 
             # Filter out NaN/Inf values
             valid_7d = returns_7d[~(torch.isnan(returns_7d) | torch.isinf(returns_7d))]
@@ -205,7 +214,7 @@ def load_all_sequences_corrected(use_cache=True, cache_file='global_thresholds.p
     total_sequences_kept = 0
 
     for filepath in csv_files:
-        stock_data = load_stock_data(filepath)
+        stock_data = load_stock_data(filepath, feature_columns=feature_columns, target_columns=target_columns)
         max_i = len(stock_data) - SEQ_LEN
         file_sequences_checked = 0
         file_sequences_kept = 0
@@ -215,9 +224,9 @@ def load_all_sequences_corrected(use_cache=True, cache_file='global_thresholds.p
             total_sequences_checked += 1
 
             # Get sequence and targets
-            seq_x = stock_data[i:i+SEQ_LEN, :20]  # All 20 feature columns (0-19)
-            forward_return_7d = stock_data[i+SEQ_LEN, 20]  # forward_return_7d column
-            forward_return_30d = stock_data[i+SEQ_LEN, 21]  # forward_return_30d column
+            seq_x = stock_data[i:i+SEQ_LEN, :len(feature_columns)]  # All feature columns
+            forward_return_7d = stock_data[i+SEQ_LEN, forward_return_7d_column_index]  # forward_return_7d column
+            forward_return_30d = stock_data[i+SEQ_LEN, forward_return_30d_column_index]  # forward_return_30d column
 
             # Check for NaN or Inf values in the sequence or targets
             if (torch.isnan(seq_x).any() or torch.isinf(seq_x).any() or
@@ -263,7 +272,6 @@ def load_all_sequences_corrected(use_cache=True, cache_file='global_thresholds.p
 
     return ensure_sequences_on_device(sequences), global_thresholds_7d, global_thresholds_30d
 
-
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Train multi-task transformer model with CORRECTED global classification')
@@ -288,6 +296,16 @@ def main():
 
     args = parser.parse_args()
 
+        # STEP 0: Identify the number of features and the locations of the features in the data
+    print("=" * 60)
+    print("Identifying the number of features and the locations of the features in the data...")
+    print("=" * 60)
+    feature_columns, target_columns = set_model_feature_and_target_columns(INPUT_DATA_DIR + "/AAPL.csv")
+    print(f"Feature columns: {feature_columns}")
+    num_features = len(feature_columns)
+    print(f"Number of features: {num_features}")
+    print(f"Target columns: {target_columns}")
+
     # Load and prepare data with CORRECTED classification
     print("="*80)
     print("LOADING DATA WITH CORRECTED GLOBAL CLASSIFICATION")
@@ -295,7 +313,9 @@ def main():
 
     sequences, global_thresholds_7d, global_thresholds_30d = load_all_sequences_corrected(
         use_cache=not args.no_cache,
-        cache_file=args.cache_file
+        cache_file=args.cache_file,
+        feature_columns=feature_columns,
+        target_columns=target_columns
     )
 
     # Shuffle sequences to mix stocks
@@ -306,8 +326,7 @@ def main():
     print(f"30-day forward return shape: {sequences[0][2].shape}")
     print(f"7-day classification shape: {sequences[0][3].shape}")
     print(f"30-day classification shape: {sequences[0][4].shape}")
-    print(f"Input features: 4 log returns + 10 technical indicators (MA, RSI, MACD, Bollinger Bands, ATR)")
-    print(f"Classification uses GLOBAL thresholds (CORRECTED approach)")
+    print(f"Classification uses GLOBAL thresholds")
 
     # Split dataset into training and evaluation sets
     train_size = int(0.8 * len(sequences))

@@ -11,7 +11,7 @@ from sklearn.metrics import confusion_matrix
 
 # Import shared model components
 from model_common import (
-    SEQ_LEN, CLASS_NAMES,
+    SEQ_LEN, CLASS_NAMES, set_model_feature_and_target_columns,
     print_device_info, load_trained_model, load_stock_data, interpret_predictions
 )
 
@@ -141,7 +141,11 @@ def classify_prediction(return_value, global_thresholds):
     else:
         return "big_up"
 
-def generate_historical_predictions(symbol, model, return_data, return_dates, price_data, price_dates, global_thresholds_7d, global_thresholds_30d):
+def generate_historical_predictions(symbol, model,
+                                    return_data, return_dates,
+                                    price_data, price_dates,
+                                    global_thresholds_7d, global_thresholds_30d,
+                                    feature_columns=[], target_columns=[]):
     """
     Generate predictions for historical data to compare with actual values.
     Only uses the last year of data for plotting.
@@ -197,15 +201,17 @@ def generate_historical_predictions(symbol, model, return_data, return_dates, pr
     # Generate predictions for each day in the last year
     for i in range(start_idx, len(return_data)):
         # Get sequence for prediction (first 20 columns: 4 log returns + 16 technical indicators)
-        sequence = return_data[i-SEQ_LEN:i, :20].unsqueeze(0)
+        sequence = return_data[i-SEQ_LEN:i, :len(feature_columns)].unsqueeze(0)
 
         # Make prediction
         with torch.no_grad():
             reg_7d_pred, reg_30d_pred, class_7d_pred, class_30d_pred = model(sequence)
 
         # Get actual values from return data
-        actual_return_7d = return_data[i, 20]  # forward_return_7d
-        actual_return_30d = return_data[i, 21]  # forward_return_30d
+        forward_return_7d_column_index = len(feature_columns)
+        forward_return_30d_column_index = forward_return_7d_column_index + 1
+        actual_return_7d = return_data[i, forward_return_7d_column_index]  # forward_return_7d
+        actual_return_30d = return_data[i, forward_return_30d_column_index]  # forward_return_30d
 
         # Interpret classification predictions
         class_7d_interpretation = interpret_predictions(reg_7d_pred, class_7d_pred, "7d")
@@ -590,7 +596,7 @@ def plot_predictions_vs_actual(predictions, symbol, save_plots=True):
     print(f"  7-day: {class_agreement_7d}/{len(predictions['dates'])} ({class_agreement_7d/len(predictions['dates'])*100:.1f}%) agreement between regression and NN classification")
     print(f"  30-day: {class_agreement_30d}/{len(predictions['dates'])} ({class_agreement_30d/len(predictions['dates'])*100:.1f}%) agreement between regression and NN classification")
 
-def predict_stock(symbol, model_path="best_model.pth", plot_historical=True):
+def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], target_columns=[], plot_historical=True):
     """
     Predict forward returns for a given symbol using multi-task model.
 
@@ -626,7 +632,7 @@ def predict_stock(symbol, model_path="best_model.pth", plot_historical=True):
 
     # Get the most recent sequence (first 20 columns: 4 log returns + 16 technical indicators)
     from model_common import device
-    latest_sequence = return_data[-SEQ_LEN:, :20].to(device).unsqueeze(0)  # Add batch dimension
+    latest_sequence = return_data[-SEQ_LEN:, :len(feature_columns)].to(device).unsqueeze(0)  # Add batch dimension
 
     print(f"Using latest {SEQ_LEN} days for prediction")
     print(f"Latest date in sequence: {return_dates[-1]}")
@@ -666,7 +672,8 @@ def predict_stock(symbol, model_path="best_model.pth", plot_historical=True):
     if plot_historical:
         historical_predictions = generate_historical_predictions(
             symbol, model, return_data, return_dates, price_data, price_dates,
-            global_thresholds_7d, global_thresholds_30d
+            global_thresholds_7d, global_thresholds_30d,
+            feature_columns=feature_columns, target_columns=target_columns
         )
         plot_predictions_vs_actual(historical_predictions, symbol)
 
@@ -808,6 +815,8 @@ def main():
 
     args = parser.parse_args()
 
+    feature_columns, target_columns = set_model_feature_and_target_columns(STOCK_DATA_DIR + f"/AAPL.csv")
+
     try:
         # Make prediction
         # If concise is True, force plot_historical to True (i.e., no_plots to False)
@@ -824,11 +833,15 @@ def main():
             _stdout = sys.stdout
             sys.stdout = io.StringIO()
             try:
-                predictions = predict_stock(args.symbol, args.model, plot_historical=plot_historical)
+                predictions = predict_stock(args.symbol, args.model,
+                                            feature_columns=feature_columns, target_columns=target_columns,
+                                            plot_historical=plot_historical)
             finally:
                 sys.stdout = _stdout
         else:
-            predictions = predict_stock(args.symbol, args.model, plot_historical=plot_historical)
+            predictions = predict_stock(args.symbol, args.model,
+                                        feature_columns=feature_columns, target_columns=target_columns,
+                                        plot_historical=plot_historical)
 
         # Print results
         print_predictions(predictions, concise=args.concise)
