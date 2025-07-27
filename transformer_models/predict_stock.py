@@ -11,7 +11,7 @@ from sklearn.metrics import confusion_matrix
 
 # Import shared model components
 from model_common import (
-    SEQ_LEN, CLASS_NAMES, set_model_feature_and_target_columns,
+    SEQ_LEN, CLASS_NAMES, NUM_CLASSES, set_model_feature_and_target_columns,
     print_device_info, load_trained_model, load_stock_data, interpret_predictions
 )
 
@@ -61,6 +61,30 @@ def load_global_thresholds(cache_file='./global_thresholds.pkl'):
         print(f"Warning: Could not load global thresholds: {e}")
         print("Classification results may not be accurate without proper thresholds.")
         return {}, {}
+
+def print_confusion_matrix(confusion_7d, confusion_30d):
+     # Print confusion matrix summaries for 7d and 30d classification
+    print("\tConfusion Matrix Summary (7d):")
+    for i, class_name in enumerate(CLASS_NAMES):
+        row = confusion_7d[i]
+        total = row.sum().item()
+        if total > 0:
+            percentages = [f"{(count.item()/total)*100:.1f}%" for count in row]
+        else:
+            percentages = ["0.0%" for _ in row]
+        pred_dist = ", ".join([f"{CLASS_NAMES[j]}: {percentages[j]}" for j in range(len(CLASS_NAMES))])
+        print(f"\t\t  True {class_name}: {pred_dist}")
+
+    print("\tConfusion Matrix Summary (30d):")
+    for i, class_name in enumerate(CLASS_NAMES):
+        row = confusion_30d[i]
+        total = row.sum().item()
+        if total > 0:
+            percentages = [f"{(count.item()/total)*100:.1f}%" for count in row]
+        else:
+            percentages = ["0.0%" for _ in row]
+        pred_dist = ", ".join([f"{CLASS_NAMES[j]}: {percentages[j]}" for j in range(len(CLASS_NAMES))])
+        print(f"\t\t  True {class_name}: {pred_dist}")
 
 def load_stock_data_with_dates(symbol, feature_columns, target_columns):
     """
@@ -184,6 +208,9 @@ def generate_historical_predictions(symbol, model,
 
     print(f"Plotting predictions for the last {len(return_data) - start_idx} days of data")
 
+    confusion_7d = np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=np.int64)
+    confusion_30d = np.zeros((NUM_CLASSES, NUM_CLASSES), dtype=np.int64)
+
     # Generate predictions for each day in the last year
     for i in range(start_idx, len(return_data)):
         # Get sequence for prediction (first 20 columns: 4 log returns + 16 technical indicators)
@@ -212,6 +239,10 @@ def generate_historical_predictions(symbol, model,
 
         actual_7d_class = classify_prediction(actual_return_7d, global_thresholds_7d)
         actual_30d_class = classify_prediction(actual_return_30d, global_thresholds_30d)
+
+        # Update confusion matrices
+        confusion_7d[CLASS_NAMES.index(actual_7d_class), CLASS_NAMES.index(class_7d_interpretation['classification_prediction'][0])] += 1
+        confusion_30d[CLASS_NAMES.index(actual_30d_class), CLASS_NAMES.index(class_30d_interpretation['classification_prediction'][0])] += 1
 
         try:
             price_idx = np.where(price_dates == return_date)[0][0]
@@ -262,7 +293,7 @@ def generate_historical_predictions(symbol, model,
 
     print(f"Generated {len(predictions['dates'])} historical predictions for the last year")
 
-    return predictions
+    return predictions, confusion_7d, confusion_30d
 
 def plot_predictions_vs_actual(predictions, symbol, save_plots=True):
     """
@@ -652,12 +683,13 @@ def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], targe
 
     # Generate historical predictions for validation if requested
     historical_predictions = None
+
+    historical_predictions, confusion_7d, confusion_30d = generate_historical_predictions(
+        symbol, model, return_data, return_dates, price_data, price_dates,
+        global_thresholds_7d, global_thresholds_30d,
+        feature_columns=feature_columns, target_columns=target_columns
+    )
     if plot_historical:
-        historical_predictions = generate_historical_predictions(
-            symbol, model, return_data, return_dates, price_data, price_dates,
-            global_thresholds_7d, global_thresholds_30d,
-            feature_columns=feature_columns, target_columns=target_columns
-        )
         plot_predictions_vs_actual(historical_predictions, symbol)
 
     return {
@@ -678,7 +710,9 @@ def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], targe
         'predicted_price_30d': predicted_price_30d,
         'global_thresholds_7d': global_thresholds_7d,
         'global_thresholds_30d': global_thresholds_30d,
-        'historical_predictions': historical_predictions
+        'historical_predictions': historical_predictions,
+        'confusion_7d': confusion_7d,
+        'confusion_30d': confusion_30d
     }
 
 def print_predictions(predictions, concise=False):
@@ -705,8 +739,27 @@ def print_predictions(predictions, concise=False):
         icon_7d = "📈" if reg_7d > 0 else "📉"
         icon_30d = "📈" if reg_30d > 0 else "📉"
 
-        print(f"{symbol} {icon_7d} 7-day predicted price:  {reg_7d*100:+.2f}% ${price_7d:.2f} | {icon_7d} Classification: {class_7d} (confidence: {conf_7d:.3f})")
-        print(f"{symbol} {icon_30d} 30-day predicted price: {reg_30d*100:+.2f}% ${price_30d:.2f} | {icon_30d} Classification: {class_30d} (confidence: {conf_30d:.3f})")
+        # Calculate accuracy for the predicted class from confusion matrix
+        confusion_7d = predictions['confusion_7d']
+        class_idx = CLASS_NAMES.index(class_7d.lower())
+        class_total = confusion_7d[:, class_idx].sum()
+        str_7d = f" {class_7d} historical accuracy ("
+        for i in range(NUM_CLASSES):
+            str_7d += f"{CLASS_NAMES[i]}:{confusion_7d[i, class_idx] / class_total * 100:.1f}%"
+            if i < NUM_CLASSES - 1:
+                str_7d += ", "
+        str_7d += ")"
+        confusion_30d = predictions['confusion_30d']
+        class_idx = CLASS_NAMES.index(class_30d.lower())
+        class_total = confusion_30d[:, class_idx].sum()
+        str_30d = f" {class_30d} historical accuracy ("
+        for i in range(NUM_CLASSES):
+            str_30d += f"{CLASS_NAMES[i]}:{confusion_30d[i, class_idx] / class_total * 100:.1f}%"
+            if i < NUM_CLASSES - 1:
+                str_30d += ", "
+        str_30d += ")"
+        print(f"{symbol} {icon_7d} 7-day predicted price:  {reg_7d*100:+.2f}% ${price_7d:.2f} | {icon_7d} Classification: {class_7d} (confidence: {conf_7d:.3f}) {str_7d}")
+        print(f"{symbol} {icon_30d} 30-day predicted price: {reg_30d*100:+.2f}% ${price_30d:.2f} | {icon_30d} Classification: {class_30d} (confidence: {conf_30d:.3f}) {str_30d}")
         return
 
     # Full detailed output (original format)
@@ -789,6 +842,7 @@ def print_predictions(predictions, concise=False):
         print(f"\nGlobal Classification Thresholds (30d):")
         for key, value in predictions['global_thresholds_30d'].items():
             print(f"  {key}: {value} : {(np.exp(value) - 1):.4f}")
+    print_confusion_matrix(predictions['confusion_7d'], predictions['confusion_30d'])
 
     print("="*70)
 
