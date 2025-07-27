@@ -137,15 +137,16 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True)
-    # Remove existing CSV files in output directory
-    for file in output_dir.glob('*.csv'):
-        file.unlink()
-        print(f"Removed {file.name}")
 
     # Get stock files to process
     if args.symbol:
         stock_files = [input_dir / f"{args.symbol.upper()}.csv"]
     else:
+        # batch process all stocks
+        # Remove existing CSV files in output directory
+        for file in output_dir.glob('*.csv'):
+            file.unlink()
+            print(f"Removed {file.name}")
         stock_files = list(input_dir.glob('*.csv'))
 
     if not stock_files:

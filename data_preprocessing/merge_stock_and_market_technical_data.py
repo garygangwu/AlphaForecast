@@ -28,13 +28,12 @@ def load_market_data(market_data_path):
 
     return market_df
 
-def create_relative_measures(stock_df, market_df):
+def create_relative_measures(merged_df):
     """
     Create stock relative measures by comparing stock features to market features.
 
     Args:
-        stock_df (pd.DataFrame): Stock technical data
-        market_df (pd.DataFrame): Market technical data
+        merged_df (pd.DataFrame): merged stock and market technical data
 
     Returns:
         pd.DataFrame: Stock data with relative measures added
@@ -45,30 +44,26 @@ def create_relative_measures(stock_df, market_df):
     relative_features = {}
 
     # 1. Close_log_return - SPY_Close_log_return
-    if 'Close_log_return' in stock_df.columns and 'SPY_close_log_return' in market_df.columns:
-        relative_features['Close_log_return_vs_SPY'] = stock_df['Close_log_return'] - market_df['SPY_close_log_return']
+    relative_features['Close_log_return_vs_SPY'] = merged_df['Close_log_return'] - merged_df['SPY_close_log_return']
 
     # 2. Close_log_return - QQQ_Close_log_return
-    if 'Close_log_return' in stock_df.columns and 'QQQ_close_log_return' in market_df.columns:
-        relative_features['Close_log_return_vs_QQQ'] = stock_df['Close_log_return'] - market_df['QQQ_close_log_return']
+    relative_features['Close_log_return_vs_QQQ'] = merged_df['Close_log_return'] - merged_df['QQQ_close_log_return']
 
     # 3. RSI_14d - SPY_RSI_14d
-    if 'RSI_14d' in stock_df.columns and 'SPY_RSI_14d' in market_df.columns:
-        relative_features['RSI_14d_vs_SPY'] = stock_df['RSI_14d'] - market_df['SPY_RSI_14d']
+    relative_features['RSI_14d_vs_SPY'] = merged_df['RSI_14d'] - merged_df['SPY_RSI_14d']
 
     # 4. Close_vs_MA5_20d - SPY_Close_vs_MA_20d
-    if 'Close_vs_MA5_20d' in stock_df.columns and 'SPY_Close_vs_MA_20d' in market_df.columns:
-        relative_features['Close_vs_MA5_20d_vs_SPY'] = stock_df['Close_vs_MA5_20d'] - market_df['SPY_Close_vs_MA_20d']
+    relative_features['Close_vs_MA5_20d_vs_SPY'] = merged_df['Close_vs_MA5_20d'] - merged_df['SPY_Close_vs_MA_20d']
 
     # Add relative features to stock dataframe
     for feature_name, feature_values in relative_features.items():
-        stock_df[feature_name] = feature_values
+        merged_df[feature_name] = feature_values
 
     print(f"    Added {len(relative_features)} relative measures")
     for feature in relative_features.keys():
         print(f"      - {feature}")
 
-    return stock_df
+    return merged_df
 
 def merge_stock_with_market_data(stock_file, market_df, output_dir):
     """
@@ -104,7 +99,7 @@ def merge_stock_with_market_data(stock_file, market_df, output_dir):
         print(f"  Total features: {len(merged_df.columns) - 1} (excluding Date)")
 
         # Create relative measures
-        merged_df = create_relative_measures(merged_df, market_df)
+        merged_df = create_relative_measures(merged_df)
 
         # Save merged data
         output_file = output_dir / stock_file.name
@@ -139,10 +134,6 @@ def main():
 
     # Create output directory
     output_dir.mkdir(exist_ok=True)
-    # Remove existing CSV files in output directory
-    for file in output_dir.glob('*.csv'):
-        file.unlink()
-        print(f"Removed {file.name}")
 
     print("="*60)
     print("STOCK AND MARKET DATA MERGE")
@@ -175,6 +166,11 @@ def main():
             print(f"Error: Stock file {stock_files[0]} does not exist!")
             return
     else:
+        # batch process all stocks
+        # Remove existing CSV files in output directory
+        for file in output_dir.glob('*.csv'):
+            file.unlink()
+            print(f"Removed {file.name}")
         stock_files = list(stock_data_dir.glob('*.csv'))
 
     if not stock_files:

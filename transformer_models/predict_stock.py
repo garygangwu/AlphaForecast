@@ -62,7 +62,7 @@ def load_global_thresholds(cache_file='./global_thresholds.pkl'):
         print("Classification results may not be accurate without proper thresholds.")
         return {}, {}
 
-def load_stock_data_with_dates(symbol):
+def load_stock_data_with_dates(symbol, feature_columns, target_columns):
     """
     Load return stock data with technical indicators for a given symbol with dates.
 
@@ -80,21 +80,6 @@ def load_stock_data_with_dates(symbol):
 
     df = pd.read_csv(file_path)
     df.sort_values('Date', inplace=True)
-
-    # Extract feature data (14 columns: 4 log returns + 10 technical indicators)
-    feature_columns = [
-        'Open_log_return', 'High_log_return', 'Low_log_return', 'Close_log_return',
-        'Close_vs_MA5_5d', 'Close_vs_MA5_20d',
-        'RSI_14d',
-        'MACD_line', 'MACD_signal', 'MACD_histogram',
-        'BB_position',
-        'ATR_relative_14d',
-        'OBV_zscore', 'VWAP_diff',
-        'Volume_vs_MA_5d', 'Volume_vs_MA_20d',
-        'MFI_14d', 'ADL_zscore',
-        'CMF_20d', 'Volume_ratio',
-    ]
-    target_columns = ['forward_return_7d', 'forward_return_30d']
 
     # Combine features and targets
     all_columns = feature_columns + target_columns
@@ -128,7 +113,8 @@ def classify_prediction(return_value, global_thresholds):
     """
     Classify a single return prediction using global thresholds.
     """
-    if not global_thresholds or return_value is None or np.isnan(return_value):
+    if not global_thresholds or return_value is None or \
+            (isinstance(return_value, np.ndarray) and np.isnan(return_value).any()):
         return None
     if return_value <= global_thresholds.get('very_low', -float('inf')):
         return "big_down"
@@ -611,16 +597,13 @@ def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], targe
     print(f"Loading stock data with technical indicators for {symbol}...")
 
     # Load return data with technical indicators
-    return_data, return_dates = load_stock_data_with_dates(symbol)
+    return_data, return_dates = load_stock_data_with_dates(symbol, feature_columns=feature_columns, target_columns=target_columns)
 
     # Load actual price data for comparison
     price_data, price_dates = load_actual_stock_prices(symbol)
 
     # Load global thresholds for classification interpretation
     global_thresholds_7d, global_thresholds_30d = load_global_thresholds()
-
-    print(f"Loaded {len(return_data)} days of return data with technical indicators")
-    print(f"Date range: {return_dates[0]} to {return_dates[-1]}")
 
     # Check if we have enough data
     if len(return_data) < SEQ_LEN:
@@ -772,6 +755,8 @@ def print_predictions(predictions, concise=False):
     # Calculate some insights
     reg_7d = predictions['regression_7d_prediction']
     reg_30d = predictions['regression_30d_prediction']
+    reg_class_7d = predictions['regression_based_class_7d']
+    reg_class_30d = predictions['regression_based_class_30d']
     class_7d = predictions['classification_7d_prediction']
     class_30d = predictions['classification_30d_prediction']
 
@@ -781,14 +766,14 @@ def print_predictions(predictions, concise=False):
     # 7-day outlook
     reg_icon = "📈" if reg_7d > 0 else "📉"
     class_icon = "📈" if class_7d in ['up', 'big_up'] else "📉" if class_7d in ['down', 'big_down'] else "➡️"
-    consistency_7d = "✅" if (reg_7d > 0 and class_7d in ['up', 'big_up']) or (reg_7d < 0 and class_7d in ['down', 'big_down']) or (abs(reg_7d) < 0.01 and class_7d == 'no_change') else "⚠️"
+    consistency_7d = "✅" if (reg_class_7d == class_7d) else "⚠️"
 
     print(f"{reg_icon} 7-day regression: {reg_7d*100:+.2f}% | {class_icon} Classification: {class_7d.upper()} {consistency_7d}")
 
     # 30-day outlook
     reg_icon = "📈" if reg_30d > 0 else "📉"
     class_icon = "📈" if class_30d in ['up', 'big_up'] else "📉" if class_30d in ['down', 'big_down'] else "➡️"
-    consistency_30d = "✅" if (reg_30d > 0 and class_30d in ['up', 'big_up']) or (reg_30d < 0 and class_30d in ['down', 'big_down']) or (abs(reg_30d) < 0.01 and class_30d == 'no_change') else "⚠️"
+    consistency_30d = "✅" if (reg_class_30d == class_30d) else "⚠️"
 
     print(f"{reg_icon} 30-day regression: {reg_30d*100:+.2f}% | {class_icon} Classification: {class_30d.upper()} {consistency_30d}")
 
@@ -797,9 +782,13 @@ def print_predictions(predictions, concise=False):
     print(f"\nOverall Model Consistency: {overall_consistency}")
 
     if predictions['global_thresholds_7d']:
-        print(f"\nGlobal Classification Thresholds (7d): {predictions['global_thresholds_7d']}")
+        print(f"\nGlobal Classification Thresholds (7d):")
+        for key, value in predictions['global_thresholds_7d'].items():
+            print(f"  {key}: {value} : {(np.exp(value) - 1):.4f}")
     if predictions['global_thresholds_30d']:
-        print(f"Global Classification Thresholds (30d): {predictions['global_thresholds_30d']}")
+        print(f"\nGlobal Classification Thresholds (30d):")
+        for key, value in predictions['global_thresholds_30d'].items():
+            print(f"  {key}: {value} : {(np.exp(value) - 1):.4f}")
 
     print("="*70)
 

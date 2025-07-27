@@ -137,10 +137,6 @@ def main():
     input_dir = Path('../training_data_raw')
     output_dir = Path('../training_data_normalized')
     output_dir.mkdir(exist_ok=True)
-    # Remove existing CSV files in output directory
-    for file in output_dir.glob('*.csv'):
-        file.unlink()
-        print(f"Removed {file.name}")
 
     # Dynamically determine feature columns from the first CSV file
     # Exclude Date, target variables, and one-hot encoded fields from normalization
@@ -215,6 +211,11 @@ def main():
         return
 
     # Default: process all files as before
+    # Remove existing CSV files in output directory
+    for file in output_dir.glob('*.csv'):
+        file.unlink()
+        print(f"Removed {file.name}")
+
     print(f"Found {len(csv_files)} CSV files to normalize")
     print(f"Input directory: {input_dir}")
     print(f"Output directory: {output_dir}")

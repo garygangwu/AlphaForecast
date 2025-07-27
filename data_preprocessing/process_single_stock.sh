@@ -2,13 +2,20 @@
 
 # Check if symbol is provided
 if [ $# -eq 0 ]; then
-    echo "Usage: $0 <SYMBOL>"
+    echo "Usage: $0 <SYMBOL> [--no-confirm]"
     echo "Example: $0 HOOD"
+    echo "Example: $0 HOOD --no-confirm"
     exit 1
 fi
 
 SYMBOL=$1
 SYMBOL_UPPER=$(echo $SYMBOL | tr '[:lower:]' '[:upper:]')
+
+# Check for --no-confirm flag
+NO_CONFIRM=false
+if [ "$2" = "--no-confirm" ]; then
+    NO_CONFIRM=true
+fi
 
 echo "=========================================="
 echo "please make sure you have downloaded and processed the market data"
@@ -17,18 +24,22 @@ echo "python download_market_data.py"
 echo "python process_market_data.py"
 echo "=========================================="
 
-# Ask for confirmation
-echo "This will process $SYMBOL_UPPER through the entire pipeline:"
-echo "1. Clean existing data"
-echo "2. Download new stock data"
-echo "3. Adjust for splits"
-echo "4. Generate technical indicators"
-echo ""
-read -p "Do you want to continue? (y/N) " confirm
+# Ask for confirmation (unless --no-confirm flag is used)
+if [ "$NO_CONFIRM" = false ]; then
+    echo "This will process $SYMBOL_UPPER through the entire pipeline:"
+    echo "1. Clean existing data"
+    echo "2. Download new stock data"
+    echo "3. Adjust for splits"
+    echo "4. Generate technical indicators"
+    echo ""
+    read -p "Do you want to continue? (y/N) " confirm
 
-if [[ $confirm != [yY] ]]; then
-    echo "Aborted."
-    exit 1
+    if [[ $confirm != [yY] ]]; then
+        echo "Aborted."
+        exit 1
+    fi
+else
+    echo "Proceeding without confirmation (--no-confirm flag used)..."
 fi
 
 echo "=========================================="
