@@ -134,11 +134,15 @@ def main():
     parser.add_argument('--symbol', '-s', type=str, default=None, help='Process only this symbol (e.g. AAPL)')
     args = parser.parse_args()
 
-    input_dir = Path('../adjusted_return_ta_data_extended')
-    output_dir = Path('../adjusted_return_ta_data_extended_normalized')
+    input_dir = Path('../training_data_raw')
+    output_dir = Path('../training_data_normalized')
     output_dir.mkdir(exist_ok=True)
+    # Remove existing CSV files in output directory
+    for file in output_dir.glob('*.csv'):
+        file.unlink()
+        print(f"Removed {file.name}")
 
-        # Dynamically determine feature columns from the first CSV file
+    # Dynamically determine feature columns from the first CSV file
     # Exclude Date, target variables, and one-hot encoded fields from normalization
     exclude_columns = ['Date', 'forward_return_7d', 'forward_return_30d']
 

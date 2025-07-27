@@ -6,7 +6,7 @@ from pathlib import Path
 
 # Model parameters
 SEQ_LEN = 126 #200
-# Updated INPUT_DIM to include technical indicators (excluding Volume)
+# Updated INPUT_DIM to include technical indicators
 # Columns: Open_log_return, High_log_return, Low_log_return, Close_log_return,
 # MA_5d, MA_20d, RSI_14d, MACD_line, MACD_signal, MACD_histogram, BB_upper, BB_middle, BB_lower, ATR_14d
 INPUT_DIM = 0  # 4 log returns + 16 technical indicators
@@ -24,7 +24,7 @@ def set_input_dim(input_dim):
 def set_model_feature_and_target_columns(filepath):
     df = pd.read_csv(filepath)
     target_column_names = ["forward_return_7d", "forward_return_30d"]
-    filter_column_names = ["Date", "Volume"]
+    filter_column_names = ["Date"]
     feature_columns = [col for col in df.columns if col not in target_column_names and col not in filter_column_names]
     set_input_dim(len(feature_columns))
     return feature_columns, target_column_names
@@ -183,7 +183,7 @@ def consistency_loss(regression_pred, classification_pred, temperature=1.0):
     return consistency
 
 def load_stock_data(filepath,
-                    data_dir='../adjusted_return_ta_data_extended',
+                    data_dir='../stock_technical_data',
                     feature_columns=[],
                     target_columns=[]):
     """

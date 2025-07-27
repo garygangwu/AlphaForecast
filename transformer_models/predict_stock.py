@@ -15,7 +15,7 @@ from model_common import (
     print_device_info, load_trained_model, load_stock_data, interpret_predictions
 )
 
-STOCK_DATA_DIR = '../adjusted_return_ta_data_extended_normalized'
+STOCK_DATA_DIR = '../training_data_normalized'
 PIC_DIR = 'pics'
 Path(PIC_DIR).mkdir(parents=True, exist_ok=True) # Ensure PIC_DIR exists
 CLASS_COLORS = {
@@ -851,7 +851,7 @@ def main():
         print("Make sure you have:")
         print("1. Run the data preprocessing pipeline to create technical indicator data")
         print("2. Run general_model_corrected.py to train the multi-task model")
-        print("3. The stock symbol exists in the adjusted_return_ta_data_normalized folder")
+        print("3. The stock symbol exists in the training_data_normalized folder")
         print("4. Global thresholds file (global_thresholds.pkl) exists")
     except Exception as e:
         print(f"Error: {e}")

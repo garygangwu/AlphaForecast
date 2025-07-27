@@ -464,9 +464,6 @@ def process_stock_data(input_file, output_dir):
     # Keep Volume as is (no log return for volume)
     df['Volume'] = df['Volume']
 
-    # Compute forward returns as target variables
-    df['forward_return_7d'] = compute_forward_returns(df['Close'], 7)
-    df['forward_return_30d'] = compute_forward_returns(df['Close'], 30)
 
     # Compute technical indicators
     print(f"  Computing technical indicators...")
@@ -548,7 +545,7 @@ def process_stock_data(input_file, output_dir):
     all_columns = [
         'Date',
         # Log returns
-        'Open_log_return', 'High_log_return', 'Low_log_return', 'Close_log_return', 'Volume',
+        'Open_log_return', 'High_log_return', 'Low_log_return', 'Close_log_return',
         # Moving Averages
         'Close_vs_MA5_5d', 'Close_vs_MA5_20d',
         # RSI
@@ -585,9 +582,7 @@ def process_stock_data(input_file, output_dir):
         'Three_White_Soldiers_Bullish', 'Three_White_Soldiers_Bearish', 'Three_White_Soldiers_None',
         'Three_Black_Crows_Bullish', 'Three_Black_Crows_Bearish', 'Three_Black_Crows_None',
         'Dark_Cloud_Cover_Bullish', 'Dark_Cloud_Cover_Bearish', 'Dark_Cloud_Cover_None',
-        'Piercing_Bullish', 'Piercing_Bearish', 'Piercing_None',
-        # Target variables
-        'forward_return_7d', 'forward_return_30d'
+        'Piercing_Bullish', 'Piercing_Bearish', 'Piercing_None'
     ]
 
     df_features = df[all_columns].copy()
@@ -602,7 +597,6 @@ def process_stock_data(input_file, output_dir):
     print(f"  Price-based features: 23 (4 log returns + 19 price-based indicators)")
     print(f"  Volume-based features: 8 (OBV, VWAP, Volume MAs, MFI, ADL, CMF, Volume ratio)")
     print(f"  Candlestick patterns: 33 (11 patterns × 3 states each: Bullish, Bearish, None)")
-    print(f"  Target variables: 2 (forward_return_7d, forward_return_30d)")
     print(f"  Saved to: {output_file}")
 
     return df_features
@@ -617,10 +611,14 @@ def main():
 
     # Define paths
     input_dir = Path('../adjusted_data')
-    output_dir = Path('../adjusted_return_ta_data_extended')
+    output_dir = Path('../stock_technical_data')
 
     # Create output directory if it doesn't exist
     output_dir.mkdir(exist_ok=True)
+    # Remove existing CSV files in output directory
+    for file in output_dir.glob('*.csv'):
+        file.unlink()
+        print(f"Removed {file.name}")
 
     # Get files to process
     if args.symbol:
@@ -672,7 +670,7 @@ def main():
     print("  - Price-based: 4 log returns + 21 indicators (MA, RSI, MACD, Bollinger Bands, ATR, Stochastic, CCI, Keltner, Heikin-Ashi, Donchian)")
     print("  - Volume-based: 8 indicators (OBV, VWAP, Volume MAs, MFI, ADL, CMF, Volume ratio)")
     print("  - Candlestick patterns: 33 features (11 patterns × 3 states: Bullish, Bearish, None)")
-    print("  - Total: 64 features + 2 target variables")
+    print("  - Total: 64 features")
 
 if __name__ == "__main__":
     main()

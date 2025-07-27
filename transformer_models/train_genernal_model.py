@@ -21,7 +21,7 @@ from model_common import (
     classify_single_return, calculate_global_thresholds
 )
 
-INPUT_DATA_DIR = '../adjusted_return_ta_data_extended_normalized'
+INPUT_DATA_DIR = '../training_data_normalized'
 
 # Print device info
 print_device_info()

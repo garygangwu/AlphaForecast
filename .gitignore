@@ -209,6 +209,9 @@ __marimo__/
 # Data
 data/
 adjusted_data/
-adjusted_return_ta_data_extended/
-adjusted_return_ta_data_extended_normalized/
+stock_technical_data/
 market_data/
+stock_merged_feature_data/
+training_data_raw/
+training_data_normalized/
+global_thresholds.pkl

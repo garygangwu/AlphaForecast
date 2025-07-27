@@ -11,6 +11,27 @@ SYMBOL=$1
 SYMBOL_UPPER=$(echo $SYMBOL | tr '[:lower:]' '[:upper:]')
 
 echo "=========================================="
+echo "please make sure you have downloaded and processed the market data"
+echo "by running the following command:"
+echo "python download_market_data.py"
+echo "python process_market_data.py"
+echo "=========================================="
+
+# Ask for confirmation
+echo "This will process $SYMBOL_UPPER through the entire pipeline:"
+echo "1. Clean existing data"
+echo "2. Download new stock data"
+echo "3. Adjust for splits"
+echo "4. Generate technical indicators"
+echo ""
+read -p "Do you want to continue? (y/N) " confirm
+
+if [[ $confirm != [yY] ]]; then
+    echo "Aborted."
+    exit 1
+fi
+
+echo "=========================================="
 echo "STOCK DATA PREPROCESSING PIPELINE"
 echo "=========================================="
 echo "Processing symbol: $SYMBOL_UPPER"
@@ -59,9 +80,20 @@ else
     exit 1
 fi
 
-# Step 5: Normalize data
+# Step 5: Merge stock and market technical data
 echo ""
-echo "Step 5/5: Normalizing data..."
+echo "Step 5/5: Merging stock and market technical data..."
+python merge_stock_and_market_technical_data.py --symbol $SYMBOL_UPPER
+if [ $? -eq 0 ]; then
+    echo "  ✓ Successfully merged stock and market technical data"
+else
+    echo "  ✗ Failed to merge stock and market technical data"
+    exit 1
+fi
+
+# Step 6: Normalize data
+echo ""
+echo "Step 6/6: Normalizing data..."
 echo "  Applying global normalization to $SYMBOL_UPPER..."
 python normalize_technical_data.py --symbol $SYMBOL_UPPER
 if [ $? -eq 0 ]; then
@@ -80,8 +112,10 @@ echo ""
 echo "Output files created:"
 echo "  - ../data/$SYMBOL_UPPER.csv (raw data)"
 echo "  - ../adjusted_data/$SYMBOL_UPPER.csv (split-adjusted)"
-echo "  - ../adjusted_return_ta_data_extended/$SYMBOL_UPPER.csv (with technical indicators)"
-echo "  - ../adjusted_return_ta_data_extended_normalized/$SYMBOL_UPPER.csv (normalized)"
+echo "  - ../stock_technical_data/$SYMBOL_UPPER.csv (with technical indicators)"
+echo "  - ../stock_merged_feature_data/$SYMBOL_UPPER.csv (merged with market data)"
+echo "  - ../training_data_raw/$SYMBOL_UPPER.csv (final training data with targets)"
+echo "  - ../training_data_normalized/$SYMBOL_UPPER.csv (normalized)"
 echo ""
 echo "The normalized file is ready for model training and prediction!"
 echo "=========================================="
