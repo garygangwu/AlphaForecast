@@ -321,10 +321,14 @@ def compute_keltner_channels(df, period=20, multiplier=2):
     kc_lower = ema - (multiplier * atr)
 
     # Price-independent position within Keltner Channels (0 to 1)
-    kc_position = (df['Close'] - kc_lower) / (kc_upper - kc_lower)
+    # Handle case where upper and lower bands are equal (ATR = 0)
+    channel_width = kc_upper - kc_lower
+    kc_position = np.where(channel_width > 0,
+                          (df['Close'] - kc_lower) / channel_width,
+                          0.5)  # Default to middle when no channel width
 
     # Channel width as volatility indicator (normalized by middle line)
-    kc_width_pct = (kc_upper - kc_lower) / ema
+    kc_width_pct = np.where(ema > 0, channel_width / ema, 0)
 
     return {
         'KC_position': kc_position,

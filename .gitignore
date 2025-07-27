@@ -215,3 +215,5 @@ stock_merged_feature_data/
 training_data_raw/
 training_data_normalized/
 global_thresholds.pkl
+intermediate_models*/
+pics/

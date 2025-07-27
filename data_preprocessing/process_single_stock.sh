@@ -102,9 +102,20 @@ else
     exit 1
 fi
 
-# Step 6: Normalize data
+# Step 6: Generate targets
 echo ""
-echo "Step 6/6: Normalizing data..."
+echo "Step 6/6: Generating targets..."
+python generate_targets.py --symbol $SYMBOL_UPPER
+if [ $? -eq 0 ]; then
+    echo "  ✓ Successfully generated targets"
+else
+    echo "  ✗ Failed to generate targets"
+    exit 1
+fi
+
+# Step 7: Normalize data
+echo ""
+echo "Step 7/7: Normalizing data..."
 echo "  Applying global normalization to $SYMBOL_UPPER..."
 python normalize_technical_data.py --symbol $SYMBOL_UPPER
 if [ $? -eq 0 ]; then
