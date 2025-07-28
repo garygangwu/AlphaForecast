@@ -715,7 +715,7 @@ def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], targe
         'confusion_30d': confusion_30d
     }
 
-def print_predictions(predictions, concise=False):
+def print_predictions(predictions, concise=False, print_confusion_matrix=False):
     """
     Print multi-task predictions in a formatted way.
 
@@ -739,27 +739,30 @@ def print_predictions(predictions, concise=False):
         icon_7d = "📈" if reg_7d > 0 else "📉"
         icon_30d = "📈" if reg_30d > 0 else "📉"
 
-        # Calculate accuracy for the predicted class from confusion matrix
-        confusion_7d = predictions['confusion_7d']
-        class_idx = CLASS_NAMES.index(class_7d.lower())
-        class_total = confusion_7d[:, class_idx].sum()
-        str_7d = f" {class_7d} historical accuracy ("
-        for i in range(NUM_CLASSES):
-            str_7d += f"{CLASS_NAMES[i]}:{confusion_7d[i, class_idx] / class_total * 100:.1f}%"
-            if i < NUM_CLASSES - 1:
-                str_7d += ", "
-        str_7d += ")"
-        confusion_30d = predictions['confusion_30d']
-        class_idx = CLASS_NAMES.index(class_30d.lower())
-        class_total = confusion_30d[:, class_idx].sum()
-        str_30d = f" {class_30d} historical accuracy ("
-        for i in range(NUM_CLASSES):
-            str_30d += f"{CLASS_NAMES[i]}:{confusion_30d[i, class_idx] / class_total * 100:.1f}%"
-            if i < NUM_CLASSES - 1:
-                str_30d += ", "
-        str_30d += ")"
-        print(f"{symbol} {icon_7d} 7-day predicted price:  {reg_7d*100:+.2f}% ${price_7d:.2f} | {icon_7d} Classification: {class_7d} (confidence: {conf_7d:.3f}) {str_7d}")
-        print(f"{symbol} {icon_30d} 30-day predicted price: {reg_30d*100:+.2f}% ${price_30d:.2f} | {icon_30d} Classification: {class_30d} (confidence: {conf_30d:.3f}) {str_30d}")
+        str_7d = ""
+        str_30d = ""
+        if print_confusion_matrix:
+            # Calculate accuracy for the predicted class from confusion matrix
+            confusion_7d = predictions['confusion_7d']
+            class_idx = CLASS_NAMES.index(class_7d.lower())
+            class_total = confusion_7d[:, class_idx].sum()
+            str_7d = f" {class_7d} historical accuracy ("
+            for i in range(NUM_CLASSES):
+                str_7d += f"{CLASS_NAMES[i]}:{confusion_7d[i, class_idx] / class_total * 100:.1f}%"
+                if i < NUM_CLASSES - 1:
+                    str_7d += ", "
+            str_7d += ")"
+            confusion_30d = predictions['confusion_30d']
+            class_idx = CLASS_NAMES.index(class_30d.lower())
+            class_total = confusion_30d[:, class_idx].sum()
+            str_30d = f" {class_30d} historical accuracy ("
+            for i in range(NUM_CLASSES):
+                str_30d += f"{CLASS_NAMES[i]}:{confusion_30d[i, class_idx] / class_total * 100:.1f}%"
+                if i < NUM_CLASSES - 1:
+                    str_30d += ", "
+            str_30d += ")"
+        print(f"{symbol} {icon_7d} 7-day predicted price:  {reg_7d*100:+.2f}% ${price_7d:.2f} | {icon_7d} {class_7d} (confidence: {conf_7d:.3f}) {str_7d}")
+        print(f"{symbol} {icon_30d} 30-day predicted price: {reg_30d*100:+.2f}% ${price_30d:.2f} | {icon_30d} {class_30d} (confidence: {conf_30d:.3f}) {str_30d}")
         return
 
     # Full detailed output (original format)
@@ -855,6 +858,8 @@ def main():
                        help='Skip generating historical validation plots')
     parser.add_argument('--concise', action='store_true',
                        help='Print only concise 2-line output')
+    parser.add_argument('--print-confusion-matrix', action='store_true',
+                       help='Print confusion matrix')
 
     args = parser.parse_args()
 
@@ -887,7 +892,7 @@ def main():
                                         plot_historical=plot_historical)
 
         # Print results
-        print_predictions(predictions, concise=args.concise)
+        print_predictions(predictions, concise=args.concise, print_confusion_matrix=args.print_confusion_matrix)
 
     except FileNotFoundError as e:
         print(f"Error: {e}")
