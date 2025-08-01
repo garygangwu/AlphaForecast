@@ -157,7 +157,7 @@ def generate_historical_predictions(symbol, model,
                                     return_data, return_dates,
                                     price_data, price_dates,
                                     global_thresholds_7d, global_thresholds_30d,
-                                    feature_columns=[], target_columns=[]):
+                                    feature_columns=[], target_columns=[], seq_len=SEQ_LEN):
     """
     Generate predictions for historical data to compare with actual values.
     Only uses the last year of data for plotting.
@@ -198,15 +198,15 @@ def generate_historical_predictions(symbol, model,
         'predicted_price_30d': []
     }
 
-    # We need at least SEQ_LEN days to make predictions
-    min_required = SEQ_LEN
+    # We need at least seq_len days to make predictions
+    min_required = seq_len
     if len(return_data) < min_required:
         print(f"Warning: Not enough data for historical validation. Need {min_required} days, got {len(return_data)}")
         return predictions
 
     # Calculate the start index for last year (approximately 252 trading days)
     days_to_plot = min(LOOK_BACK_DAYS, len(return_data) - 1)
-    start_idx = max(SEQ_LEN, len(return_data) - days_to_plot)
+    start_idx = max(seq_len, len(return_data) - days_to_plot)
 
     print(f"Plotting predictions for the last {len(return_data) - start_idx} days of data")
 
@@ -216,7 +216,7 @@ def generate_historical_predictions(symbol, model,
     # Generate predictions for each day in the last year
     for i in range(start_idx, len(return_data)):
         # Get sequence for prediction (first 20 columns: 4 log returns + 16 technical indicators)
-        sequence = return_data[i-SEQ_LEN:i, :len(feature_columns)].unsqueeze(0)
+        sequence = return_data[i-seq_len:i, :len(feature_columns)].unsqueeze(0)
 
         # Make prediction
         with torch.no_grad():
@@ -615,7 +615,7 @@ def plot_predictions_vs_actual(predictions, symbol, save_plots=True):
     print(f"  7-day: {class_agreement_7d}/{len(predictions['dates'])} ({class_agreement_7d/len(predictions['dates'])*100:.1f}%) agreement between regression and NN classification")
     print(f"  30-day: {class_agreement_30d}/{len(predictions['dates'])} ({class_agreement_30d/len(predictions['dates'])*100:.1f}%) agreement between regression and NN classification")
 
-def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], target_columns=[], plot_historical=True):
+def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], target_columns=[], plot_historical=True, seq_len=SEQ_LEN):
     """
     Predict forward returns for a given symbol using multi-task model.
 
@@ -639,18 +639,18 @@ def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], targe
     global_thresholds_7d, global_thresholds_30d = load_global_thresholds()
 
     # Check if we have enough data
-    if len(return_data) < SEQ_LEN:
-        raise ValueError(f"Not enough data for {symbol}. Need at least {SEQ_LEN} days, got {len(return_data)}")
+    if len(return_data) < seq_len:
+        raise ValueError(f"Not enough data for {symbol}. Need at least {seq_len} days, got {len(return_data)}")
 
     # Load model
     print(f"Loading multi-task model from {model_path}...")
-    model = load_trained_model(model_path)
+    model = load_trained_model(model_path, seq_len=seq_len)
 
     # Get the most recent sequence (first 20 columns: 4 log returns + 16 technical indicators)
     from model_common import device
-    latest_sequence = return_data[-SEQ_LEN:, :len(feature_columns)].to(device).unsqueeze(0)  # Add batch dimension
+    latest_sequence = return_data[-seq_len:, :len(feature_columns)].to(device).unsqueeze(0)  # Add batch dimension
 
-    print(f"Using latest {SEQ_LEN} days for prediction")
+    print(f"Using latest {seq_len} days for prediction")
     print(f"Latest date in sequence: {return_dates[-1]}")
 
     # Get current price information
@@ -689,7 +689,7 @@ def predict_stock(symbol, model_path="best_model.pth", feature_columns=[], targe
     historical_predictions, confusion_7d, confusion_30d = generate_historical_predictions(
         symbol, model, return_data, return_dates, price_data, price_dates,
         global_thresholds_7d, global_thresholds_30d,
-        feature_columns=feature_columns, target_columns=target_columns
+        feature_columns=feature_columns, target_columns=target_columns, seq_len=seq_len
     )
     if plot_historical:
         plot_predictions_vs_actual(historical_predictions, symbol)
@@ -856,6 +856,8 @@ def main():
     parser.add_argument('symbol', type=str, help='Stock symbol (e.g., AAPL)')
     parser.add_argument('--model', type=str, default='best_model.pth',
                        help='Path to trained model file')
+    parser.add_argument('--seq-len', type=int, default=SEQ_LEN,
+                       help='Sequence length for positional encoding (default: 252)')
     parser.add_argument('--no-plots', action='store_true',
                        help='Skip generating historical validation plots')
     parser.add_argument('--concise', action='store_true',
@@ -885,13 +887,13 @@ def main():
             try:
                 predictions = predict_stock(args.symbol, args.model,
                                             feature_columns=feature_columns, target_columns=target_columns,
-                                            plot_historical=plot_historical)
+                                            plot_historical=plot_historical, seq_len=args.seq_len)
             finally:
                 sys.stdout = _stdout
         else:
             predictions = predict_stock(args.symbol, args.model,
                                         feature_columns=feature_columns, target_columns=target_columns,
-                                        plot_historical=plot_historical)
+                                        plot_historical=plot_historical, seq_len=args.seq_len)
 
         # Print results
         print_predictions(predictions, concise=args.concise, print_confusion_matrix=args.print_confusion_matrix)
