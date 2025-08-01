@@ -34,6 +34,8 @@ penalty_matrix = np.array([
     [4, 3, 2, 1, 0]
 ])
 
+LOOK_BACK_DAYS = 1000
+
 def custom_f1(y_true, y_pred, penalty_matrix):
     cm = confusion_matrix(y_true, y_pred, labels=range(len(CLASS_NAMES)))
 
@@ -203,7 +205,7 @@ def generate_historical_predictions(symbol, model,
         return predictions
 
     # Calculate the start index for last year (approximately 252 trading days)
-    days_to_plot = min(252, len(return_data) - 1)
+    days_to_plot = min(LOOK_BACK_DAYS, len(return_data) - 1)
     start_idx = max(SEQ_LEN, len(return_data) - days_to_plot)
 
     print(f"Plotting predictions for the last {len(return_data) - start_idx} days of data")

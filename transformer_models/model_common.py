@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 
 # Model parameters
-SEQ_LEN = 126 #200
+SEQ_LEN = 252 #200
 # Updated INPUT_DIM to include technical indicators
 # Columns: Open_log_return, High_log_return, Low_log_return, Close_log_return,
 # MA_5d, MA_20d, RSI_14d, MACD_line, MACD_signal, MACD_histogram, BB_upper, BB_middle, BB_lower, ATR_14d
