@@ -3,7 +3,6 @@ import torch.nn as nn
 import pandas as pd
 import numpy as np
 from pathlib import Path
-import math
 
 # Model parameters
 SEQ_LEN = 252 #200
@@ -44,82 +43,6 @@ def get_device():
 def print_device_info():
     """Print current device information"""
     print(f"Using device: {device}")
-
-class PositionalEncoding(nn.Module):
-    """
-    Enhanced positional encoding that combines learned and sinusoidal encodings.
-    Supports variable sequence lengths and provides better inductive bias.
-    """
-    def __init__(self, model_dim, max_len=5000, dropout=0.1, use_sinusoidal=True, use_learned=True):
-        super(PositionalEncoding, self).__init__()
-        self.model_dim = model_dim
-        self.max_len = max_len
-        self.use_sinusoidal = use_sinusoidal
-        self.use_learned = use_learned
-
-        # Dropout for regularization
-        self.dropout = nn.Dropout(p=dropout)
-
-        # Initialize encoding components
-        self.sinusoidal_encoding = None
-        self.learned_encoding = None
-
-        if use_sinusoidal:
-            # Create sinusoidal positional encoding
-            pe = torch.zeros(max_len, model_dim)
-            position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-            div_term = torch.exp(torch.arange(0, model_dim, 2).float() * (-math.log(10000.0) / model_dim))
-
-            pe[:, 0::2] = torch.sin(position * div_term)
-            pe[:, 1::2] = torch.cos(position * div_term)
-            pe = pe.unsqueeze(0).transpose(0, 1)  # (max_len, 1, model_dim)
-
-            # Register as buffer (not parameter) so it's not updated during training
-            self.register_buffer('sinusoidal_encoding', pe)
-
-        if use_learned:
-            # Learned positional encoding
-            self.learned_encoding = nn.Parameter(torch.randn(max_len, 1, model_dim))
-
-        # Scaling factor for combining encodings
-        if use_sinusoidal and use_learned:
-            self.combine_weights = nn.Parameter(torch.tensor([0.5, 0.5]))  # Learnable weights
-
-    def forward(self, x, seq_len=None):
-        """
-        Apply positional encoding to input tensor.
-
-        Args:
-            x: Input tensor of shape (batch_size, seq_len, model_dim)
-            seq_len: Optional sequence length (if different from x.size(1))
-
-        Returns:
-            Tensor with positional encoding added
-        """
-        if seq_len is None:
-            seq_len = x.size(1)
-
-        # Ensure sequence length doesn't exceed max_len
-        if seq_len > self.max_len:
-            raise ValueError(f"Sequence length {seq_len} exceeds maximum length {self.max_len}")
-
-        # Initialize positional encoding
-        pos_encoding = torch.zeros_like(x)
-
-        if self.use_sinusoidal and self.sinusoidal_encoding is not None:
-            # Add sinusoidal encoding
-            sinusoidal_pe = self.sinusoidal_encoding[:seq_len, :, :].transpose(0, 1)  # (1, seq_len, model_dim)
-            pos_encoding += sinusoidal_pe
-
-        if self.use_learned and self.learned_encoding is not None:
-            # Add learned encoding
-            learned_pe = self.learned_encoding[:seq_len, :, :].transpose(0, 1)  # (1, seq_len, model_dim)
-            pos_encoding += learned_pe
-
-        # Apply dropout for regularization
-        pos_encoding = self.dropout(pos_encoding)
-
-        return pos_encoding
 
 def create_classification_targets(returns, percentiles=(20, 80)):
     """
@@ -172,23 +95,13 @@ class AttentionPooling(nn.Module):
 # Enhanced Transformer Model with Multi-task Learning
 class MultiTaskTransformerModel(nn.Module):
     def __init__(self, input_dim=INPUT_DIM, model_dim=MODEL_DIM, num_layers=NUM_LAYERS,
-                 nhead=NUM_HEADS, dropout=DROPOUT, num_classes=NUM_CLASSES,
-                 seq_len=SEQ_LEN, use_sinusoidal_pe=True, use_learned_pe=True):
+                 nhead=NUM_HEADS, dropout=DROPOUT, num_classes=NUM_CLASSES):
         super(MultiTaskTransformerModel, self).__init__()
-
-        # Enhanced positional encoding
-        self.pos_encoder = PositionalEncoding(
-            model_dim=model_dim,
-            max_len=seq_len * 2,  # Allow for longer sequences
-            dropout=dropout * 0.5,  # Lower dropout for positional encoding
-            use_sinusoidal=use_sinusoidal_pe,
-            use_learned=use_learned_pe
-        )
-
-        self.input_proj = nn.Linear(input_dim, model_dim)
+        self.pos_encoder = nn.Parameter(torch.zeros(1, SEQ_LEN, model_dim))
         encoder_layers = nn.TransformerEncoderLayer(d_model=model_dim, nhead=nhead,
                                                    batch_first=True, dropout=dropout)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
+        self.input_proj = nn.Linear(input_dim, model_dim)
 
         # Separate attention pooling for different tasks
         self.attention_regression_7d = AttentionPooling(model_dim, dropout)
@@ -225,11 +138,8 @@ class MultiTaskTransformerModel(nn.Module):
         )
 
     def forward(self, src):
-        # Shared encoder with enhanced positional encoding
-        src = self.input_proj(src)
-        pos_encoding = self.pos_encoder(src)
-        src = src + pos_encoding  # Add positional encoding
-
+        # Shared encoder
+        src = self.input_proj(src) + self.pos_encoder
         encoder_output = self.transformer_encoder(src)
 
         # Task-specific attention pooling
@@ -302,29 +212,14 @@ def load_stock_data(filepath,
     data = df[all_columns].values
     return torch.tensor(data, dtype=torch.float32).to(device)
 
-def create_model(seq_len=SEQ_LEN, use_sinusoidal_pe=True, use_learned_pe=True):
+def create_model():
     """
     Create and initialize a new multi-task transformer model.
-
-    Args:
-        seq_len: Sequence length for positional encoding
-        use_sinusoidal_pe: Whether to use sinusoidal positional encoding
-        use_learned_pe: Whether to use learned positional encoding
 
     Returns:
         MultiTaskTransformerModel: Initialized model on the correct device
     """
-    model = MultiTaskTransformerModel(
-        input_dim=INPUT_DIM,
-        model_dim=MODEL_DIM,
-        num_layers=NUM_LAYERS,
-        nhead=NUM_HEADS,
-        dropout=DROPOUT,
-        num_classes=NUM_CLASSES,
-        seq_len=seq_len,
-        use_sinusoidal_pe=use_sinusoidal_pe,
-        use_learned_pe=use_learned_pe
-    )
+    model = MultiTaskTransformerModel(INPUT_DIM, MODEL_DIM, NUM_LAYERS, NUM_HEADS, DROPOUT, NUM_CLASSES)
     model = model.to(device)
 
     # Proper weight initialization
@@ -334,30 +229,17 @@ def create_model(seq_len=SEQ_LEN, use_sinusoidal_pe=True, use_learned_pe=True):
 
     return model
 
-def load_trained_model(model_path, seq_len=SEQ_LEN, use_sinusoidal_pe=True, use_learned_pe=True):
+def load_trained_model(model_path):
     """
     Load a trained model from file.
 
     Args:
         model_path (str): Path to the saved model file
-        seq_len: Sequence length for positional encoding
-        use_sinusoidal_pe: Whether to use sinusoidal positional encoding
-        use_learned_pe: Whether to use learned positional encoding
 
     Returns:
         MultiTaskTransformerModel: Loaded model
     """
-    model = MultiTaskTransformerModel(
-        input_dim=INPUT_DIM,
-        model_dim=MODEL_DIM,
-        num_layers=NUM_LAYERS,
-        nhead=NUM_HEADS,
-        dropout=DROPOUT,
-        num_classes=NUM_CLASSES,
-        seq_len=seq_len,
-        use_sinusoidal_pe=use_sinusoidal_pe,
-        use_learned_pe=use_learned_pe
-    )
+    model = MultiTaskTransformerModel(INPUT_DIM, MODEL_DIM, NUM_LAYERS, NUM_HEADS, DROPOUT, NUM_CLASSES)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
     model.eval()
